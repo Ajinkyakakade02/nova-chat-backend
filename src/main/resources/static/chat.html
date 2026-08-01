@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Together</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
+    <style>
+        body { background: #f0f0f3; }
+        .chat-box {
+            height: 350px;
+            overflow-y: auto;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+        }
+        .sent { text-align: right; color: green; }
+        .received { text-align: left; color: black; }
+        .typing { font-style: italic; color: gray; }
+    </style>
+</head>
+
+<body>
+<div class="container mt-4">
+    <h3 class="text-center">💬 Chat Together</h3>
+
+    <div class="chat-box" id="chat"></div>
+    <p class="typing" id="typing"></p>
+
+    <input id="sender" class="form-control mt-2" placeholder="Your name">
+    <input id="message" class="form-control mt-2" placeholder="Type message">
+    <button class="btn btn-primary mt-2" onclick="sendMessage()">Send</button>
+</div>
+
+<script>
+    let stompClient = null;
+    let username = "";
+
+    function connect() {
+        const socket = new SockJS('/chat');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, () => {
+
+            stompClient.subscribe('/topic/message', msg => {
+                showMessage(JSON.parse(msg.body));
+            });
+
+            stompClient.subscribe('/topic/typing', msg => {
+                document.getElementById("typing").innerText =
+                    msg.body + " is typing...";
+                setTimeout(() => {
+                    document.getElementById("typing").innerText = "";
+                }, 1000);
+            });
+        });
+    }
+
+    function sendMessage() {
+        username = document.getElementById("sender").value;
+        const text = document.getElementById("message").value;
+
+        if (!username || !text) return;
+
+        stompClient.send("/app/sendMessage", {}, JSON.stringify({
+            sender: username,
+            content: text
+        }));
+
+        document.getElementById("message").value = "";
+    }
+
+    document.getElementById("message").addEventListener("input", () => {
+        if (username) {
+            stompClient.send("/app/typing", {}, username);
+        }
+    });
+
+    function showMessage(msg) {
+        const chat = document.getElementById("chat");
+        const div = document.createElement("div");
+
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+
+        div.className = msg.sender === username ? "sent" : "received";
+        div.innerHTML = `<b>${msg.sender}</b>: ${msg.content} <small>(${time})</small>`;
+
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    connect();
+</script>
+</body>
+</html>
