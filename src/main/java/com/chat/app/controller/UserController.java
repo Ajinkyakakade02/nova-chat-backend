@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/users")
@@ -65,8 +66,20 @@ public class UserController {
             return ResponseEntity.badRequest().body(Map.of("error", "Phone number is required"));
         }
         try {
+            // Check if user already exists
+            Optional<User> existingUser = userRepository.findByPhoneNumber(phoneNumber);
+            if (existingUser.isPresent() && existingUser.get().getPassword() != null) {
+                // User exists and has a password - don't send OTP, ask for password
+                return ResponseEntity.ok(Map.of(
+                        "exists", true,
+                        "message", "Account exists. Please enter your password."
+                ));
+            }
+            
+            // New user or existing user without password - send OTP
             String otp = otpService.generateOtp(phoneNumber);
             return ResponseEntity.ok(Map.of(
+                    "exists", false,
                     "message", "OTP sent successfully",
                     "otp", otp
             ));
