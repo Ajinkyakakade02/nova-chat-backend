@@ -17,9 +17,9 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000", allowedHeaders = "*",
+@CrossOrigin(origins = "*", allowedHeaders = "*",
         methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT,
-                RequestMethod.DELETE, RequestMethod.OPTIONS})
+                   RequestMethod.DELETE, RequestMethod.OPTIONS})
 public class UserController {
 
     private final UserService userService;
@@ -58,7 +58,6 @@ public class UserController {
         }
     }
 
-    // ===== OTP Endpoints =====
     @PostMapping("/send-otp")
     public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> request) {
         String phoneNumber = request.get("phoneNumber");
@@ -69,7 +68,7 @@ public class UserController {
             String otp = otpService.generateOtp(phoneNumber);
             return ResponseEntity.ok(Map.of(
                     "message", "OTP sent successfully",
-                    "otp", otp  // TEMPORARY: for testing only
+                    "otp", otp
             ));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send OTP"));
@@ -120,14 +119,11 @@ public class UserController {
                                         @RequestBody Map<String, String> updates) {
         try {
             User updatedUser = new User();
-
-            // Name – accept both "fullName" and "username"
             if (updates.containsKey("fullName")) {
                 updatedUser.setFullName(updates.get("fullName"));
             } else if (updates.containsKey("username")) {
                 updatedUser.setFullName(updates.get("username"));
             }
-
             if (updates.containsKey("email")) {
                 updatedUser.setEmail(updates.get("email"));
             }
@@ -141,21 +137,32 @@ public class UserController {
                 updatedUser.setAvatar(updates.get("avatar"));
             }
 
-            // ✅ Automatically generate an initial‑based avatar from the new name
-            String nameForAvatar = updatedUser.getFullName();
-            if (nameForAvatar != null && !nameForAvatar.isBlank()) {
-                String encodedName = nameForAvatar.replaceAll(" ", "+");
-                String avatarUrl = "https://ui-avatars.com/api/?name=" + encodedName
-                        + "&background=8B5CF6&color=fff&size=200";
-                updatedUser.setAvatar(avatarUrl);
-            }
-
             User user = userService.updateUser(userId, updatedUser);
             user.setPassword(null);
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{userId}/set-password")
+    public ResponseEntity<?> setPassword(@PathVariable String userId, @RequestBody Map<String, String> request) {
+        try {
+            String password = request.get("password");
+            if (password == null || password.length() < 6) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
+            }
+            
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            user.setPassword(password);
+            userRepository.save(user);
+            
+            return ResponseEntity.ok(Map.of("message", "Password set successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
 
