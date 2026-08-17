@@ -3,6 +3,7 @@ package com.chat.app.controller;
 import com.chat.app.model.User;
 import com.chat.app.service.OtpService;
 import com.chat.app.service.UserService;
+import com.chat.app.service.MailService;
 import com.chat.app.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,7 @@ public class UserController {
     private final UserService userService;
     private final OtpService otpService;
     private final UserRepository userRepository;
+    private final MailService mailService;
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody Map<String, String> request) {
@@ -37,6 +39,16 @@ public class UserController {
 
             User user = userService.registerUser(fullName, email, phoneNumber, password);
             user.setPassword(null);
+
+            // Send welcome email if email is provided
+            if (email != null && !email.isBlank()) {
+                try {
+                    mailService.sendWelcomeEmail(email, fullName);
+                } catch (Exception mailEx) {
+                    System.out.println("Failed to send welcome email: " + mailEx.getMessage());
+                }
+            }
+
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
@@ -78,6 +90,17 @@ public class UserController {
             
             // New user or existing user without password - send OTP
             String otp = otpService.generateOtp(phoneNumber);
+
+            // Send OTP via email if user has email
+            if (existingUser.isPresent() && existingUser.get().getEmail() != null 
+                    && !existingUser.get().getEmail().isBlank()) {
+                try {
+                    mailService.sendOtpEmail(existingUser.get().getEmail(), otp);
+                } catch (Exception mailEx) {
+                    System.out.println("Failed to send OTP email: " + mailEx.getMessage());
+                }
+            }
+
             return ResponseEntity.ok(Map.of(
                     "exists", false,
                     "message", "OTP sent successfully",
@@ -171,6 +194,17 @@ public class UserController {
                     .orElseThrow(() -> new RuntimeException("User not found"));
             user.setPassword(password);
             userRepository.save(user);
+
+            // Send password confirmation email
+            if (user.getEmail() != null && !user.getEmail().isBlank()) {
+                try {
+                    mailService.sendEmail(user.getEmail(), 
+                        "NovaChat - Password Set", 
+                        "Your password has been set successfully.");
+                } catch (Exception mailEx) {
+                    System.out.println("Failed to send email: " + mailEx.getMessage());
+                }
+            }
             
             return ResponseEntity.ok(Map.of("message", "Password set successfully"));
         } catch (Exception e) {
