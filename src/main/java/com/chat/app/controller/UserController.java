@@ -37,10 +37,16 @@ public class UserController {
             String phoneNumber = request.get("phoneNumber");
             String password = request.get("password");
 
+            // Check if user already exists
+            Optional<User> existingUser = userRepository.findByPhoneNumber(phoneNumber);
+            if (existingUser.isPresent()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Account already exists. Please login."));
+            }
+
             User user = userService.registerUser(fullName, email, phoneNumber, password);
             user.setPassword(null);
 
-            // Send welcome email if email is provided
+            // Send welcome email if email provided
             if (email != null && !email.isBlank()) {
                 try {
                     mailService.sendWelcomeEmail(email, fullName);
@@ -67,70 +73,72 @@ public class UserController {
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid phone or password"));
         }
     }
 
-    @PostMapping("/send-otp")
-    public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> request) {
+    // Forgot Password - Step 1: Send OTP to email
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
         String phoneNumber = request.get("phoneNumber");
-        if (phoneNumber == null || phoneNumber.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Phone number is required"));
+        String email = request.get("email");
+        
+        if (phoneNumber == null || phoneNumber.isBlank() || email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Phone number and email are required"));
         }
+        
         try {
-            // Check if user already exists
-            Optional<User> existingUser = userRepository.findByPhoneNumber(phoneNumber);
-            if (existingUser.isPresent() && existingUser.get().getPassword() != null) {
-                // User exists and has a password - don't send OTP, ask for password
-                return ResponseEntity.ok(Map.of(
-                        "exists", true,
-                        "message", "Account exists. Please enter your password."
-                ));
+            Optional<User> userOpt = userRepository.findByPhoneNumber(phoneNumber);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Account not found"));
             }
             
-            // New user or existing user without password - send OTP
-            String otp = otpService.generateOtp(phoneNumber);
-
-            // Send OTP via email if user has email
-            if (existingUser.isPresent() && existingUser.get().getEmail() != null 
-                    && !existingUser.get().getEmail().isBlank()) {
-                try {
-                    mailService.sendOtpEmail(existingUser.get().getEmail(), otp);
-                } catch (Exception mailEx) {
-                    System.out.println("Failed to send OTP email: " + mailEx.getMessage());
-                }
+            User user = userOpt.get();
+            if (user.getEmail() == null || !user.getEmail().equalsIgnoreCase(email)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Email does not match our records"));
             }
-
-            return ResponseEntity.ok(Map.of(
-                    "exists", false,
-                    "message", "OTP sent successfully",
-                    "otp", otp
-            ));
+            
+            String otp = otpService.generateOtp(phoneNumber);
+            
+            // Send OTP via email
+            mailService.sendOtpEmail(email, otp);
+            
+            return ResponseEntity.ok(Map.of("message", "OTP sent to your email"));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send OTP"));
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
 
-    @PostMapping("/verify-otp")
-    public ResponseEntity<?> verifyOtp(@RequestBody Map<String, String> request) {
+    // Forgot Password - Step 2: Reset password with OTP
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
         String phoneNumber = request.get("phoneNumber");
         String otp = request.get("otp");
-        if (phoneNumber == null || otp == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Phone number and OTP are required"));
+        String newPassword = request.get("newPassword");
+        
+        if (phoneNumber == null || otp == null || newPassword == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "All fields are required"));
         }
+        
+        if (newPassword.length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
+        }
+        
         try {
             boolean valid = otpService.verifyOtp(phoneNumber, otp);
             if (!valid) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid or expired OTP"));
             }
-
-            User user = userService.findOrCreateUser(phoneNumber);
-            user.setStatus(User.UserStatus.ONLINE);
-            user.setLastSeen(LocalDateTime.now());
+            
+            User user = userRepository.findByPhoneNumber(phoneNumber)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            user.setPassword(newPassword);
             userRepository.save(user);
-            user.setPassword(null);
-            return ResponseEntity.ok(user);
+            
+            return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
@@ -157,8 +165,6 @@ public class UserController {
             User updatedUser = new User();
             if (updates.containsKey("fullName")) {
                 updatedUser.setFullName(updates.get("fullName"));
-            } else if (updates.containsKey("username")) {
-                updatedUser.setFullName(updates.get("username"));
             }
             if (updates.containsKey("email")) {
                 updatedUser.setEmail(updates.get("email"));
@@ -179,37 +185,6 @@ public class UserController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @PostMapping("/{userId}/set-password")
-    public ResponseEntity<?> setPassword(@PathVariable String userId, @RequestBody Map<String, String> request) {
-        try {
-            String password = request.get("password");
-            if (password == null || password.length() < 6) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
-            }
-            
-            User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            user.setPassword(password);
-            userRepository.save(user);
-
-            // Send password confirmation email
-            if (user.getEmail() != null && !user.getEmail().isBlank()) {
-                try {
-                    mailService.sendEmail(user.getEmail(), 
-                        "NovaChat - Password Set", 
-                        "Your password has been set successfully.");
-                } catch (Exception mailEx) {
-                    System.out.println("Failed to send email: " + mailEx.getMessage());
-                }
-            }
-            
-            return ResponseEntity.ok(Map.of("message", "Password set successfully"));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
 
