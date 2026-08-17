@@ -66,6 +66,13 @@ public class UserController {
             userRepository.save(user);
             user.setPassword(null);
 
+            // Try to send welcome email (non-blocking)
+            try {
+                mailService.sendWelcomeEmail(email.trim(), fullName);
+            } catch (Exception mailEx) {
+                System.out.println("Welcome email failed: " + mailEx.getMessage());
+            }
+
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
@@ -121,18 +128,27 @@ public class UserController {
             
             String otp = otpService.generateOtp(email.trim());
             
-            // Try to send email (don't fail if it doesn't work)
+            // Try to send email
+            boolean emailSent = false;
             try {
-                mailService.sendOtpEmail(email.trim(), otp);
+                emailSent = mailService.sendOtpEmail(email.trim(), otp);
             } catch (Exception mailEx) {
-                System.out.println("Email send failed: " + mailEx.getMessage());
+                System.out.println("Mail exception: " + mailEx.getMessage());
             }
             
-            // Return OTP in response for testing
-            return ResponseEntity.ok(Map.of(
-                "message", "OTP sent to your email",
-                "otp", otp
-            ));
+            if (emailSent) {
+                return ResponseEntity.ok(Map.of(
+                    "message", "OTP sent to your email",
+                    "otp", otp,
+                    "emailSent", true
+                ));
+            } else {
+                return ResponseEntity.ok(Map.of(
+                    "message", "OTP generated (email sending failed)",
+                    "otp", otp,
+                    "emailSent", false
+                ));
+            }
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
