@@ -34,25 +34,22 @@ public class UserController {
         try {
             String fullName = request.get("fullName");
             String email = request.get("email");
-            String phoneNumber = request.get("phoneNumber");
             String password = request.get("password");
 
-            // Check if user already exists
-            Optional<User> existingUser = userRepository.findByPhoneNumber(phoneNumber);
+            // Check if email already exists
+            Optional<User> existingUser = userRepository.findByEmail(email);
             if (existingUser.isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Account already exists. Please login."));
+                return ResponseEntity.badRequest().body(Map.of("error", "Email already registered. Please login."));
             }
 
-            User user = userService.registerUser(fullName, email, phoneNumber, password);
+            User user = userService.registerUser(fullName, email, null, password);
             user.setPassword(null);
 
-            // Send welcome email if email provided
-            if (email != null && !email.isBlank()) {
-                try {
-                    mailService.sendWelcomeEmail(email, fullName);
-                } catch (Exception mailEx) {
-                    System.out.println("Failed to send welcome email: " + mailEx.getMessage());
-                }
+            // Send welcome email
+            try {
+                mailService.sendWelcomeEmail(email, fullName);
+            } catch (Exception mailEx) {
+                System.out.println("Failed to send welcome email: " + mailEx.getMessage());
             }
 
             return ResponseEntity.ok(user);
@@ -65,59 +62,59 @@ public class UserController {
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@RequestBody Map<String, String> request) {
         try {
-            String phoneNumber = request.get("phoneNumber");
+            String email = request.get("email");
             String password = request.get("password");
 
-            User user = userService.login(phoneNumber, password);
+            User user = userService.loginByEmail(email, password);
             user.setPassword(null);
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid phone or password"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid email or password"));
         }
     }
 
-    // Forgot Password - Step 1: Send OTP to email
+    // Forgot Password - Send OTP to email
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
-        String phoneNumber = request.get("phoneNumber");
         String email = request.get("email");
         
-        if (phoneNumber == null || phoneNumber.isBlank() || email == null || email.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Phone number and email are required"));
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
         }
         
         try {
-            Optional<User> userOpt = userRepository.findByPhoneNumber(phoneNumber);
+            Optional<User> userOpt = userRepository.findByEmail(email.trim().toLowerCase());
+            
             if (userOpt.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Account not found"));
+                return ResponseEntity.badRequest().body(Map.of("error", "Account not found. Please check your email."));
             }
             
-            User user = userOpt.get();
-            if (user.getEmail() == null || !user.getEmail().equalsIgnoreCase(email)) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Email does not match our records"));
-            }
-            
-            String otp = otpService.generateOtp(phoneNumber);
+            String otp = otpService.generateOtp(email);
             
             // Send OTP via email
-            mailService.sendOtpEmail(email, otp);
+            try {
+                mailService.sendOtpEmail(email.trim().toLowerCase(), otp);
+            } catch (Exception mailEx) {
+                System.out.println("Failed to send OTP email: " + mailEx.getMessage());
+                return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send email. Please try again later."));
+            }
             
             return ResponseEntity.ok(Map.of("message", "OTP sent to your email"));
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.internalServerError().body(Map.of("error", "An error occurred. Please try again."));
         }
     }
 
-    // Forgot Password - Step 2: Reset password with OTP
+    // Reset Password with OTP
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
-        String phoneNumber = request.get("phoneNumber");
+        String email = request.get("email");
         String otp = request.get("otp");
         String newPassword = request.get("newPassword");
         
-        if (phoneNumber == null || otp == null || newPassword == null) {
+        if (email == null || otp == null || newPassword == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "All fields are required"));
         }
         
@@ -126,12 +123,12 @@ public class UserController {
         }
         
         try {
-            boolean valid = otpService.verifyOtp(phoneNumber, otp);
+            boolean valid = otpService.verifyOtp(email, otp);
             if (!valid) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid or expired OTP"));
             }
             
-            User user = userRepository.findByPhoneNumber(phoneNumber)
+            User user = userRepository.findByEmail(email.trim().toLowerCase())
                     .orElseThrow(() -> new RuntimeException("User not found"));
             user.setPassword(newPassword);
             userRepository.save(user);
@@ -168,9 +165,6 @@ public class UserController {
             }
             if (updates.containsKey("email")) {
                 updatedUser.setEmail(updates.get("email"));
-            }
-            if (updates.containsKey("phoneNumber")) {
-                updatedUser.setPhoneNumber(updates.get("phoneNumber"));
             }
             if (updates.containsKey("about")) {
                 updatedUser.setAbout(updates.get("about"));
