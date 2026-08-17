@@ -33,7 +33,7 @@ public class MailService {
     }
 
     public void sendWelcomeEmail(String to, String name) {
-        String subject = "Welcome to NovaChat! 🎉";
+        String subject = "Welcome to NovaChat!";
         String body = "Hi " + name + ",\n\nWelcome to NovaChat! Your account has been created successfully.\n\nStart chatting with your friends now!\n\nHappy chatting!";
         sendEmail(to, subject, body);
     }
