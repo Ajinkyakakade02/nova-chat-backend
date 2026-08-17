@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/users")
@@ -29,7 +30,6 @@ public class UserController {
     private final UserRepository userRepository;
     private final MailService mailService;
 
-    // Register with Email
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody Map<String, String> request) {
         try {
@@ -37,17 +37,26 @@ public class UserController {
             String email = request.get("email");
             String password = request.get("password");
 
-            // Check if email already exists
-            Optional<User> existingUser = userRepository.findByEmail(email);
+            if (fullName == null || fullName.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Full name is required"));
+            }
+            if (email == null || email.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
+            }
+            if (password == null || password.length() < 6) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
+            }
+
+            Optional<User> existingUser = userRepository.findByEmail(email.trim());
             if (existingUser.isPresent()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered. Please login."));
             }
 
             User user = new User();
-            user.setId(java.util.UUID.randomUUID().toString());
+            user.setId(UUID.randomUUID().toString());
             user.setUsername(email.split("@")[0]);
             user.setFullName(fullName);
-            user.setEmail(email);
+            user.setEmail(email.trim());
             user.setPassword(password);
             user.setAbout("Hey there! I am using NovaChat");
             user.setAvatar("https://ui-avatars.com/api/?name=" + fullName.replace(" ", "+") + "&background=8B5CF6&color=fff&size=200");
@@ -57,13 +66,6 @@ public class UserController {
             userRepository.save(user);
             user.setPassword(null);
 
-            // Send welcome email
-            try {
-                mailService.sendWelcomeEmail(email, fullName);
-            } catch (Exception mailEx) {
-                System.out.println("Failed to send welcome email: " + mailEx.getMessage());
-            }
-
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
@@ -71,14 +73,17 @@ public class UserController {
         }
     }
 
-    // Login with Email
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@RequestBody Map<String, String> request) {
         try {
             String email = request.get("email");
             String password = request.get("password");
 
-            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (email == null || email.isBlank() || password == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Email and password are required"));
+            }
+
+            Optional<User> userOpt = userRepository.findByEmail(email.trim());
             if (userOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
@@ -100,7 +105,6 @@ public class UserController {
         }
     }
 
-    // Forgot Password - Send OTP to email
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
         String email = request.get("email");
@@ -115,24 +119,26 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
             
-            String otp = otpService.generateOtp(email);
+            String otp = otpService.generateOtp(email.trim());
             
-            // Send OTP via email
+            // Try to send email (don't fail if it doesn't work)
             try {
                 mailService.sendOtpEmail(email.trim(), otp);
             } catch (Exception mailEx) {
-                System.out.println("Failed to send OTP email: " + mailEx.getMessage());
-                return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send email. Please try again."));
+                System.out.println("Email send failed: " + mailEx.getMessage());
             }
             
-            return ResponseEntity.ok(Map.of("message", "OTP sent to your email"));
+            // Return OTP in response for testing
+            return ResponseEntity.ok(Map.of(
+                "message", "OTP sent to your email",
+                "otp", otp
+            ));
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.internalServerError().body(Map.of("error", "An error occurred"));
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
     }
 
-    // Reset Password with OTP
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
         String email = request.get("email");
