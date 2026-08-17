@@ -29,7 +29,7 @@ public class UserController {
     private final UserRepository userRepository;
     private final MailService mailService;
 
-    // Register with email
+    // Register with Email
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody Map<String, String> request) {
         try {
@@ -37,20 +37,24 @@ public class UserController {
             String email = request.get("email");
             String password = request.get("password");
 
-            if (email == null || email.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
-            }
-            if (password == null || password.length() < 6) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
-            }
-
             // Check if email already exists
             Optional<User> existingUser = userRepository.findByEmail(email);
             if (existingUser.isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Account already exists. Please login."));
+                return ResponseEntity.badRequest().body(Map.of("error", "Email already registered. Please login."));
             }
 
-            User user = userService.registerUser(fullName, email, null, password);
+            User user = new User();
+            user.setId(java.util.UUID.randomUUID().toString());
+            user.setUsername(email.split("@")[0]);
+            user.setFullName(fullName);
+            user.setEmail(email);
+            user.setPassword(password);
+            user.setAbout("Hey there! I am using NovaChat");
+            user.setAvatar("https://ui-avatars.com/api/?name=" + fullName.replace(" ", "+") + "&background=8B5CF6&color=fff&size=200");
+            user.setStatus(User.UserStatus.ONLINE);
+            user.setLastSeen(LocalDateTime.now());
+
+            userRepository.save(user);
             user.setPassword(null);
 
             // Send welcome email
@@ -67,23 +71,32 @@ public class UserController {
         }
     }
 
-    // Login with email
+    // Login with Email
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@RequestBody Map<String, String> request) {
         try {
             String email = request.get("email");
             String password = request.get("password");
 
-            if (email == null || email.isBlank() || password == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Email and password are required"));
+            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
 
-            User user = userService.loginByEmail(email, password);
+            User user = userOpt.get();
+            if (user.getPassword() == null || !user.getPassword().equals(password)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid password"));
+            }
+
+            user.setStatus(User.UserStatus.ONLINE);
+            user.setLastSeen(LocalDateTime.now());
+            userRepository.save(user);
             user.setPassword(null);
+
             return ResponseEntity.ok(user);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid email or password"));
+            return ResponseEntity.badRequest().body(Map.of("error", "Login failed"));
         }
     }
 
@@ -97,16 +110,16 @@ public class UserController {
         }
         
         try {
-            Optional<User> userOpt = userRepository.findByEmail(email);
+            Optional<User> userOpt = userRepository.findByEmail(email.trim());
             if (userOpt.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Account not found. Please check your email."));
+                return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
             
             String otp = otpService.generateOtp(email);
             
             // Send OTP via email
             try {
-                mailService.sendOtpEmail(email, otp);
+                mailService.sendOtpEmail(email.trim(), otp);
             } catch (Exception mailEx) {
                 System.out.println("Failed to send OTP email: " + mailEx.getMessage());
                 return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send email. Please try again."));
@@ -115,11 +128,11 @@ public class UserController {
             return ResponseEntity.ok(Map.of("message", "OTP sent to your email"));
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.internalServerError().body(Map.of("error", "An error occurred. Please try again."));
+            return ResponseEntity.internalServerError().body(Map.of("error", "An error occurred"));
         }
     }
 
-    // Reset password with OTP
+    // Reset Password with OTP
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
         String email = request.get("email");
@@ -140,8 +153,12 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid or expired OTP"));
             }
             
-            User user = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+            Optional<User> userOpt = userRepository.findByEmail(email);
+            if (userOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "User not found"));
+            }
+            
+            User user = userOpt.get();
             user.setPassword(newPassword);
             userRepository.save(user);
             
@@ -177,9 +194,6 @@ public class UserController {
             }
             if (updates.containsKey("email")) {
                 updatedUser.setEmail(updates.get("email"));
-            }
-            if (updates.containsKey("phoneNumber")) {
-                updatedUser.setPhoneNumber(updates.get("phoneNumber"));
             }
             if (updates.containsKey("about")) {
                 updatedUser.setAbout(updates.get("about"));
