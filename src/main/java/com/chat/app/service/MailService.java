@@ -11,7 +11,7 @@ public class MailService {
 
     private final JavaMailSender mailSender;
 
-    public void sendEmail(String to, String subject, String body) {
+    public boolean sendEmail(String to, String subject, String body) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setTo(to);
@@ -19,22 +19,29 @@ public class MailService {
             message.setText(body);
             message.setFrom("ajinkyakakde510@gmail.com");
             mailSender.send(message);
-            System.out.println("Email sent successfully to: " + to);
+            System.out.println("✅ Email sent successfully to: " + to);
+            return true;
         } catch (Exception e) {
-            System.out.println("Email sending failed: " + e.getMessage());
+            System.out.println("❌ Email sending failed: " + e.getMessage());
             e.printStackTrace();
+            return false;
         }
     }
 
-    public void sendOtpEmail(String to, String otp) {
+    public boolean sendOtpEmail(String to, String otp) {
         String subject = "NovaChat - Your OTP Code";
-        String body = "Your OTP code is: " + otp + "\n\nThis code will expire in 5 minutes.\n\nIf you didn't request this, please ignore this email.";
-        sendEmail(to, subject, body);
+        String body = "Your OTP code is: " + otp + "\n\n" +
+                     "This code will expire in 5 minutes.\n\n" +
+                     "If you didn't request this, please ignore this email.";
+        return sendEmail(to, subject, body);
     }
 
-    public void sendWelcomeEmail(String to, String name) {
+    public boolean sendWelcomeEmail(String to, String name) {
         String subject = "Welcome to NovaChat!";
-        String body = "Hi " + name + ",\n\nWelcome to NovaChat! Your account has been created successfully.\n\nStart chatting with your friends now!\n\nHappy chatting!";
-        sendEmail(to, subject, body);
+        String body = "Hi " + name + ",\n\n" +
+                     "Welcome to NovaChat! Your account has been created successfully.\n\n" +
+                     "Start chatting with your friends now!\n\n" +
+                     "Happy chatting!";
+        return sendEmail(to, subject, body);
     }
 }
