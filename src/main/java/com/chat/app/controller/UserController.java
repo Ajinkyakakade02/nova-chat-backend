@@ -66,7 +66,12 @@ public class UserController {
             userRepository.save(user);
             user.setPassword(null);
 
-            // Removed welcome email sending to prevent timeout
+            // Send welcome email
+            try {
+                mailService.sendWelcomeEmail(email.trim(), fullName);
+            } catch (Exception mailEx) {
+                System.out.println("Welcome email failed: " + mailEx.getMessage());
+            }
 
             return ResponseEntity.ok(user);
         } catch (Exception e) {
@@ -121,14 +126,23 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
             
-            // Generate OTP (no email sending for now to avoid timeout)
             String otp = otpService.generateOtp(email.trim());
             
-            return ResponseEntity.ok(Map.of(
-                "message", "OTP generated",
-                "otp", otp,
-                "emailSent", false
-            ));
+            // Send OTP email
+            boolean emailSent = mailService.sendOtpEmail(email.trim(), otp);
+            
+            if (emailSent) {
+                return ResponseEntity.ok(Map.of(
+                    "message", "OTP sent to your email",
+                    "emailSent", true
+                ));
+            } else {
+                return ResponseEntity.ok(Map.of(
+                    "message", "OTP generated but email sending failed",
+                    "otp", otp,
+                    "emailSent", false
+                ));
+            }
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
