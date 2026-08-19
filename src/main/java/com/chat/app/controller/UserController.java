@@ -47,16 +47,18 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Password must be at least 6 characters"));
             }
 
-            Optional<User> existingUser = userRepository.findByEmail(email.trim());
+            String normalizedEmail = email.trim().toLowerCase();
+
+            Optional<User> existingUser = userRepository.findByEmail(normalizedEmail);
             if (existingUser.isPresent()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered. Please login."));
             }
 
             User user = new User();
             user.setId(UUID.randomUUID().toString());
-            user.setUsername(email.split("@")[0]);
+            user.setUsername(normalizedEmail.split("@")[0]);
             user.setFullName(fullName);
-            user.setEmail(email.trim());
+            user.setEmail(normalizedEmail);
             user.setPassword(password);
             user.setAbout("Hey there! I am using NovaChat");
             user.setAvatar("https://ui-avatars.com/api/?name=" + fullName.replace(" ", "+") + "&background=8B5CF6&color=fff&size=200");
@@ -67,7 +69,7 @@ public class UserController {
             user.setPassword(null);
 
             // Send welcome email (best effort)
-            mailService.sendWelcomeEmail(email.trim(), fullName);
+            mailService.sendWelcomeEmail(normalizedEmail, fullName);
 
             return ResponseEntity.ok(user);
         } catch (Exception e) {
@@ -86,7 +88,8 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email and password are required"));
             }
 
-            Optional<User> userOpt = userRepository.findByEmail(email.trim());
+            String normalizedEmail = email.trim().toLowerCase();
+            Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
             if (userOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
@@ -117,15 +120,16 @@ public class UserController {
         }
         
         try {
-            Optional<User> userOpt = userRepository.findByEmail(email.trim());
+            String normalizedEmail = email.trim().toLowerCase();
+            Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
             if (userOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
             
-            String otp = otpService.generateOtp(email.trim());
+            String otp = otpService.generateOtp(normalizedEmail);
             
             // Send OTP email (do NOT return OTP in response)
-            boolean emailSent = mailService.sendOtpEmail(email.trim(), otp);
+            boolean emailSent = mailService.sendOtpEmail(normalizedEmail, otp);
             
             if (emailSent) {
                 return ResponseEntity.ok(Map.of(
@@ -158,12 +162,13 @@ public class UserController {
         }
         
         try {
-            boolean valid = otpService.verifyOtp(email, otp);
+            String normalizedEmail = email.trim().toLowerCase();
+            boolean valid = otpService.verifyOtp(normalizedEmail, otp);
             if (!valid) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid or expired OTP"));
             }
             
-            Optional<User> userOpt = userRepository.findByEmail(email);
+            Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
             if (userOpt.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "User not found"));
             }
@@ -203,7 +208,7 @@ public class UserController {
                 updatedUser.setFullName(updates.get("fullName"));
             }
             if (updates.containsKey("email")) {
-                updatedUser.setEmail(updates.get("email"));
+                updatedUser.setEmail(updates.get("email").trim().toLowerCase());
             }
             if (updates.containsKey("about")) {
                 updatedUser.setAbout(updates.get("about"));
