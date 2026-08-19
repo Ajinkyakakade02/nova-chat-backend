@@ -66,12 +66,7 @@ public class UserController {
             userRepository.save(user);
             user.setPassword(null);
 
-            // Try to send welcome email (non-blocking)
-            try {
-                mailService.sendWelcomeEmail(email.trim(), fullName);
-            } catch (Exception mailEx) {
-                System.out.println("Welcome email failed: " + mailEx.getMessage());
-            }
+            // Removed welcome email sending to prevent timeout
 
             return ResponseEntity.ok(user);
         } catch (Exception e) {
@@ -126,29 +121,14 @@ public class UserController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email not found. Please register first."));
             }
             
+            // Generate OTP (no email sending for now to avoid timeout)
             String otp = otpService.generateOtp(email.trim());
             
-            // Try to send email
-            boolean emailSent = false;
-            try {
-                emailSent = mailService.sendOtpEmail(email.trim(), otp);
-            } catch (Exception mailEx) {
-                System.out.println("Mail exception: " + mailEx.getMessage());
-            }
-            
-            if (emailSent) {
-                return ResponseEntity.ok(Map.of(
-                    "message", "OTP sent to your email",
-                    "otp", otp,
-                    "emailSent", true
-                ));
-            } else {
-                return ResponseEntity.ok(Map.of(
-                    "message", "OTP generated (email sending failed)",
-                    "otp", otp,
-                    "emailSent", false
-                ));
-            }
+            return ResponseEntity.ok(Map.of(
+                "message", "OTP generated",
+                "otp", otp,
+                "emailSent", false
+            ));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
