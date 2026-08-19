@@ -66,12 +66,8 @@ public class UserController {
             userRepository.save(user);
             user.setPassword(null);
 
-            // Send welcome email
-            try {
-                mailService.sendWelcomeEmail(email.trim(), fullName);
-            } catch (Exception mailEx) {
-                System.out.println("Welcome email failed: " + mailEx.getMessage());
-            }
+            // Send welcome email (best effort)
+            mailService.sendWelcomeEmail(email.trim(), fullName);
 
             return ResponseEntity.ok(user);
         } catch (Exception e) {
@@ -128,7 +124,7 @@ public class UserController {
             
             String otp = otpService.generateOtp(email.trim());
             
-            // Send OTP email
+            // Send OTP email (do NOT return OTP in response)
             boolean emailSent = mailService.sendOtpEmail(email.trim(), otp);
             
             if (emailSent) {
@@ -137,15 +133,13 @@ public class UserController {
                     "emailSent", true
                 ));
             } else {
-                return ResponseEntity.ok(Map.of(
-                    "message", "OTP generated but email sending failed",
-                    "otp", otp,
-                    "emailSent", false
+                return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "Failed to send OTP email. Please try again later."
                 ));
             }
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.internalServerError().body(Map.of("error", "An error occurred"));
         }
     }
 
