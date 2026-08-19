@@ -23,7 +23,7 @@ public class MailService {
             return true;
         } catch (Exception e) {
             System.out.println("❌ Email sending failed: " + e.getMessage());
-            e.printStackTrace();   // 👈 full error in Render logs
+            e.printStackTrace();
             return false;
         }
     }
